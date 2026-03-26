@@ -1,0 +1,237 @@
+// AI Cost Markets — Production Database Schema
+// This documents the target schema. Development uses JSON file store.
+// To migrate to production: npx prisma migrate dev
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   String   @id @default(cuid())
+  email                String   @unique
+  passwordHash         String
+  name                 String
+  role                 String   @default("free") // free | pro | admin
+  plan                 String   @default("free") // free | pro
+  balance              Float    @default(10000)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  trades           Trade[]
+  positions        Position[]
+  alerts           Alert[]
+  watchlist        WatchlistItem[]
+  builderScenarios BuilderScenario[]
+  auditLogs        AuditLog[]
+}
+
+model Market {
+  id                   String   @id
+  title                String
+  description          String
+  type                 String   // api_threshold | subscription | relative | task_cost
+  status               String   @default("open") // open | closed | resolved | disputed
+  provider             String
+  providers            String[] @default([])
+  modelClass           String?
+  taskType             String?
+  threshold            Float?
+  metric               String?
+  qYes                 Float
+  qNo                  Float
+  b                    Float    @default(100)
+  volume               Int      @default(0)
+  tradeCount           Int      @default(0)
+  resolutionDate       DateTime
+  resolutionCriteria   String
+  resolutionSourceType String
+  resolutionSourceName String
+  resolutionSourceUrl  String
+  normalizationMethod  String
+  normalizationNotes   String
+  benchmarkTier        String?
+  equivalenceTier      String?
+  resolutionStatus     String   @default("pending")
+  resolvedOutcome      String?
+  resolutionValue      Float?
+  reviewerId           String?
+  resolvedAt           DateTime?
+  disputeDeadline      DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  trades      Trade[]
+  positions   Position[]
+  pricePoints PricePoint[]
+  alerts      Alert[]
+  watchlist   WatchlistItem[]
+}
+
+model Trade {
+  id             String   @id @default(cuid())
+  userId         String
+  marketId       String
+  direction      String   // yes | no
+  shares         Float
+  cost           Float
+  priceAtTrade   Float
+  newProbability Float
+  createdAt      DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  market Market @relation(fields: [marketId], references: [id])
+
+  @@index([userId])
+  @@index([marketId])
+}
+
+model Position {
+  id          String   @id @default(cuid())
+  userId      String
+  marketId    String
+  direction   String
+  shares      Float
+  avgPrice    Float
+  realizedPnl Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  market Market @relation(fields: [marketId], references: [id])
+
+  @@unique([userId, marketId, direction])
+}
+
+model PricePoint {
+  id        String   @id @default(cuid())
+  marketId  String
+  price     Float
+  timestamp DateTime @default(now())
+
+  market Market @relation(fields: [marketId], references: [id])
+
+  @@index([marketId, timestamp])
+}
+
+model Insight {
+  id              String   @id
+  title           String
+  type            String
+  explanation     String
+  severity        String
+  confidence      Float
+  linkedMarketIds String[]
+  status          String   @default("active")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Provider {
+  id         String @id
+  slug       String @unique
+  name       String
+  color      String
+  website    String
+  pricingUrl String
+
+  pricingSnapshots ProviderPricingSnapshot[]
+}
+
+model ProviderPricingSnapshot {
+  id            String   @id @default(cuid())
+  providerId    String
+  model         String
+  tier          String
+  inputPer1M    Float
+  outputPer1M   Float
+  effectiveDate DateTime
+  sourceUrl     String
+  createdAt     DateTime @default(now())
+
+  provider Provider @relation(fields: [providerId], references: [id])
+
+  @@index([providerId])
+}
+
+model BenchmarkTier {
+  id          String   @id
+  name        String
+  description String
+  criteria    String
+  models      String[]
+}
+
+model BuilderScenario {
+  id                String   @id @default(cuid())
+  userId            String
+  name              String
+  useCase           String
+  monthlyRequests   Int
+  avgInputTokens    Int
+  avgOutputTokens   Int
+  tier              String
+  preferredProvider String
+  budgetSensitivity String   @default("medium")
+  qualityPreference String   @default("balanced")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Alert {
+  id          String    @id @default(cuid())
+  userId      String
+  marketId    String
+  type        String
+  condition   String
+  threshold   Float?
+  triggered   Boolean   @default(false)
+  triggeredAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  market Market @relation(fields: [marketId], references: [id])
+}
+
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  marketId  String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  market Market @relation(fields: [marketId], references: [id])
+
+  @@unique([userId, marketId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  resource   String
+  resourceId String
+  details    String
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  enabled     Boolean  @default(false)
+  description String
+  updatedAt   DateTime @updatedAt
+}
