@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
       const analysis = await chatCompletion([
         { role: "system", content: prompt },
         { role: "user", content: `Analyze the market: "${market.title}"` },
-      ], { temperature: 0.5, maxTokens: 800 });
+      ], { temperature: 0.5, maxTokens: 300 });
 
       return NextResponse.json({ ok: true, data: { analysis } });
     }
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
 
       // Try streaming, fall back to non-streaming for free models
       try {
-        const stream = await chatCompletionStream(fullMessages, { temperature: 0.7, maxTokens: 1024 });
+        const stream = await chatCompletionStream(fullMessages, { temperature: 0.7, maxTokens: 300 });
         return new Response(stream, {
           headers: {
             "Content-Type": "text/plain; charset=utf-8",
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
         });
       } catch {
         // Streaming failed — fall back to non-streaming
-        const text = await chatCompletion(fullMessages, { temperature: 0.7, maxTokens: 1024 });
+        const text = await chatCompletion(fullMessages, { temperature: 0.7, maxTokens: 300 });
         // Return as a plain text response so the client reader still works
         return new Response(text, {
           headers: { "Content-Type": "text/plain; charset=utf-8" },
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
 
       // Try streaming first, fall back to non-streaming
       try {
-        const stream = await chatCompletionStream(messages, { temperature: 0.6, maxTokens: 1200 });
+        const stream = await chatCompletionStream(messages, { temperature: 0.6, maxTokens: 250 });
         return new Response(stream, {
           headers: {
             "Content-Type": "text/plain; charset=utf-8",
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
         });
       } catch {
         // Streaming failed (common with free models) — fall back to non-streaming
-        const text = await chatCompletion(messages, { temperature: 0.6, maxTokens: 1200 });
+        const text = await chatCompletion(messages, { temperature: 0.6, maxTokens: 250 });
         return NextResponse.json({ ok: true, data: { digest: text } });
       }
     }
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
       const advice = await chatCompletion([
         { role: "system", content: prompt },
         { role: "user", content: "Advise me on my AI infrastructure cost strategy." },
-      ], { temperature: 0.5, maxTokens: 800 });
+      ], { temperature: 0.5, maxTokens: 300 });
 
       return NextResponse.json({ ok: true, data: { advice } });
     }
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
       const response = await chatCompletion([
         { role: "system", content: prompt },
         { role: "user", content: "Suggest 5 new prediction markets." },
-      ], { temperature: 0.8, maxTokens: 2000 });
+      ], { temperature: 0.8, maxTokens: 400 });
 
       // Parse the JSON response
       try {

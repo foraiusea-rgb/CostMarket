@@ -58,17 +58,9 @@ Resolution date: ${market.resolutionDate}
 Resolution criteria: ${market.resolutionCriteria}
 Threshold: ${market.threshold ?? "N/A"}
 
-${relatedInsights.length > 0 ? `RELATED ARBITRAGE SIGNALS:\n${relatedInsights.map(i => `- [${i.severity.toUpperCase()}] ${i.explanation}`).join("\n")}` : "No arbitrage signals for this market."}
+${relatedInsights.length > 0 ? `ARBITRAGE: ${relatedInsights.map(i => `[${i.severity.toUpperCase()}] ${i.explanation}`).join(" | ")}` : ""}
 
-${formatMarketContext(allMarkets)}
-
-Write a 3-4 paragraph analysis covering:
-1. What this market is really asking and why it matters for AI cost planning
-2. What the current probability implies about market sentiment
-3. Any arbitrage opportunities or inconsistencies with related markets
-4. A practical takeaway for someone building on this provider's API
-
-Keep the tone professional but accessible. No jargon without explanation. Use specific numbers from the data.`;
+Write a concise 2-paragraph analysis: (1) What the probability means and why it matters (2) Key risk or opportunity. Under 120 words.`;
 }
 
 /**
@@ -97,27 +89,24 @@ Guidelines:
  * News Digest — analyze market state and suggest what's interesting.
  */
 export function newsDigestPrompt(ctx: MarketContext): string {
-  return `You are a market intelligence analyst for AI Cost Markets.
+  // Only include top 5 markets by volume to reduce prompt size
+  const topMarkets = [...ctx.markets].sort((a, b) => b.volume - a.volume).slice(0, 5);
+  const marketLines = topMarkets.map(m =>
+    `"${m.title}" | ${m.provider} | ${(m.probability * 100).toFixed(0)}% | Vol $${m.volume.toLocaleString()}`
+  ).join("\n");
 
-${formatMarketContext(ctx)}
+  const insightLines = ctx.insights.length > 0
+    ? ctx.insights.slice(0, 2).map(i => `[${i.severity.toUpperCase()}] ${i.title}`).join("\n")
+    : "None";
 
-Write a brief market digest covering:
+  return `AI pricing prediction market digest. Be concise — under 150 words total.
 
-1. **Market Movers** — Which markets have the highest volume or most extreme probabilities? What does that tell us about market sentiment on AI pricing?
+TOP MARKETS:
+${marketLines}
 
-2. **Arbitrage Alert** — Explain any detected arbitrage insights in plain English. Why are these inconsistencies interesting? How could a trader exploit them?
+ARBITRAGE: ${insightLines}
 
-3. **Key Dates** — Which markets are resolving soon? What should traders watch for?
-
-4. **Trend Analysis** — Based on the probability distribution, what is the market collectively predicting about AI pricing trends? Is the market bullish or bearish on price drops?
-
-5. **Suggested New Markets** — Based on gaps in current coverage, suggest 3 specific new prediction markets that would be valuable. For each, provide:
-   - A clear yes/no question
-   - The provider (OpenAI, Anthropic, or Google)
-   - A suggested resolution date
-   - Why this market would be interesting
-
-Format with clear headers. Keep it under 500 words.`;
+Write 3 short paragraphs: (1) Market sentiment summary (2) Top opportunity (3) What to watch next. No headers, no bullets, just prose.`;
 }
 
 /**
@@ -158,15 +147,7 @@ ${projLines}
 
 Best provider by projected cost: ${builderResult.bestProvider}
 
-${formatMarketContext(ctx)}
-
-Provide strategic advice in 3-4 paragraphs:
-1. Whether you agree with the builder's recommendation and why
-2. Risk factors the formula doesn't capture (vendor lock-in, model quality differences, rate limits, reliability)
-3. A concrete migration strategy if switching makes sense, or how to hedge if staying
-4. What market signals to watch that would change the recommendation
-
-Be direct and actionable. Mention specific dollar amounts and timelines.`;
+Give 2 short paragraphs: (1) Do you agree with the recommendation and why (2) One key risk or action item. Under 120 words. Be direct.`;
 }
 
 /**
