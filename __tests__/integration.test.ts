@@ -1,17 +1,21 @@
 /**
- * Integration Tests — API Endpoints
+ * Integration Tests — DB, Engine, Rate Limiter
  * 
- * Tests the full request → DB → response chain for critical paths.
+ * Tests the full data flow for critical paths.
+ * Auth is handled by Supabase and tested separately via the UI.
+ * These tests cover: DB operations, LMSR trades, arbitrage, builder, rate limiter.
+ * 
  * Run: npx tsx __tests__/integration.test.ts
  */
 
 import { db } from "../src/lib/db";
 import { seed } from "../src/lib/db/seed";
-import { createUser, authenticateUser, hashPassword, verifyPassword, validateEmail, generateId } from "../src/lib/auth";
+import { validateEmail } from "../src/lib/auth";
 import { executeTrade, costForShares, probYes, createState, validateState } from "../src/lib/engine/lmsr";
 import { generateRecommendation } from "../src/lib/engine/builder";
 import { detectAllInsights } from "../src/lib/engine/arbitrage";
-import { checkRateLimit, RATE_LIMITS } from "../src/lib/ratelimit";
+import { checkRateLimit } from "../src/lib/ratelimit";
+import type { User } from "../src/types";
 
 let passed = 0;
 let failed = 0;
@@ -24,7 +28,6 @@ function assert(condition: boolean, msg: string, detail?: string) {
 
 function section(name: string) { console.log(`\n--- ${name} ---`); }
 
-// === SETUP ===
 async function main() {
 console.log("\n=== Integration Tests ===\n");
 
@@ -37,7 +40,6 @@ seed();
 // ============================================================
 section("Database Layer");
 
-// Verify seed data
 const markets = db.markets.getAll();
 assert(markets.length === 10, "Seed creates 10 markets", `got ${markets.length}`);
 
@@ -61,62 +63,38 @@ assert(testMarket?.status === "open", "Market m1 is open");
 db.markets.update("m1", { volume: 99999 });
 const updated = db.markets.getById("m1");
 assert(updated?.volume === 99999, "update() persists changes", `got ${updated?.volume}`);
-
-// Reset volume
 db.markets.update("m1", { volume: 12400 });
 
-// ============================================================
-// 2. AUTH SYSTEM
-// ============================================================
-section("Auth System");
+// User CRUD (direct DB, not through Supabase auth)
+const now = new Date().toISOString();
+const testUser: User = {
+  id: "test-user-001",
+  email: "test@integration.com",
+  passwordHash: "",
+  name: "Test User",
+  role: "free",
+  plan: "free",
+  balance: 10000,
+  createdAt: now,
+  updatedAt: now,
+};
+db.users.insert(testUser);
 
-// Email validation
+const fetchedUser = db.users.getById("test-user-001");
+assert(fetchedUser !== null, "User inserted and retrieved");
+assert(fetchedUser?.balance === 10000, "User balance correct");
+assert(fetchedUser?.email === "test@integration.com", "User email correct");
+
+// ============================================================
+// 2. VALIDATION
+// ============================================================
+section("Validation");
+
 assert(validateEmail("test@example.com") === true, "Valid email passes");
 assert(validateEmail("test@example") === false, "Missing TLD rejected");
 assert(validateEmail("") === false, "Empty email rejected");
 assert(validateEmail("no-at-sign") === false, "No @ rejected");
 assert(validateEmail("a".repeat(251) + "@b.c") === false, "Overlength email rejected");
-
-// Password hashing
-const hash = await hashPassword("testpass123");
-assert(hash !== "testpass123", "Password is hashed");
-assert(hash.startsWith("$2"), "Uses bcrypt format");
-
-const valid = await verifyPassword("testpass123", hash);
-assert(valid === true, "Correct password verifies");
-
-const invalid = await verifyPassword("wrongpass", hash);
-assert(invalid === false, "Wrong password rejected");
-
-// User creation
-const user = await createUser("integration@test.com", "password123", "Test User");
-assert(user.id.startsWith("u_"), "User ID has correct prefix");
-assert(user.email === "integration@test.com", "Email stored correctly");
-assert(user.balance === 10000, "Starting balance is 10000");
-assert(user.role === "free", "Default role is free");
-assert(user.passwordHash !== "password123", "Password not stored in plain text");
-
-// Duplicate email
-let dupError = "";
-try { await createUser("integration@test.com", "pass12345", "Dup"); } catch (e: any) { dupError = e.message; }
-assert(dupError === "Email already registered", "Duplicate email rejected");
-
-// Bad email format
-let emailError = "";
-try { await createUser("notanemail", "password123", "Bad"); } catch (e: any) { emailError = e.message; }
-assert(emailError === "Invalid email format", "Bad email format rejected");
-
-// Authentication
-const authed = await authenticateUser("integration@test.com", "password123");
-assert(authed.id === user.id, "authenticateUser returns correct user");
-
-let authError = "";
-try { await authenticateUser("integration@test.com", "wrongpassword"); } catch (e: any) { authError = e.message; }
-assert(authError === "Invalid email or password", "Wrong password rejected with generic message");
-
-let noUserError = "";
-try { await authenticateUser("nonexistent@test.com", "password123"); } catch (e: any) { noUserError = e.message; }
-assert(noUserError === "Invalid email or password", "Nonexistent user rejected with same generic message");
 
 // ============================================================
 // 3. TRADE EXECUTION
@@ -142,10 +120,10 @@ assert(result.cost > 0, "Trade has positive cost");
 assert(result.priceImpact > 0, "Trade has price impact");
 assert(validateState(result.newState), "New state is valid");
 
-// Trade on actual DB market
-const tradeUser = db.users.getById(user.id)!;
+// Trade on actual DB market with test user
+const user = db.users.getById("test-user-001")!;
 const tradeCost = costForShares(state, "yes", 10);
-assert(tradeCost <= tradeUser.balance, "User can afford trade");
+assert(tradeCost <= user.balance, "User can afford trade");
 
 // Simulate the full trade flow (what the API does)
 const tradeResult = executeTrade(state, "yes", 10);
@@ -155,15 +133,15 @@ db.markets.update("m1", {
   volume: market.volume + Math.round(Math.abs(tradeCost) * 100),
   tradeCount: market.tradeCount + 1,
 });
-db.users.update(user.id, { balance: tradeUser.balance - tradeCost });
+db.users.update(user.id, { balance: user.balance - tradeCost });
 
 const afterMarket = db.markets.getById("m1")!;
 assert(afterMarket.tradeCount === market.tradeCount + 1, "Trade count incremented");
 assert(afterMarket.volume > market.volume, "Volume increased");
 
 const afterUser = db.users.getById(user.id)!;
-assert(afterUser.balance < tradeUser.balance, "Balance decreased after trade");
-assert(afterUser.balance === tradeUser.balance - tradeCost, "Balance decreased by exact trade cost");
+assert(afterUser.balance < user.balance, "Balance decreased after trade");
+assert(afterUser.balance === user.balance - tradeCost, "Balance decreased by exact trade cost");
 
 // ============================================================
 // 4. ARBITRAGE DETECTION — LIVE
@@ -178,8 +156,6 @@ for (const insight of liveInsights) {
   assert(typeof insight.id === "string" && insight.id.length > 0, `Insight ${insight.id} has valid ID`);
   assert(["high", "medium", "low"].includes(insight.severity), `Insight ${insight.id} has valid severity`);
   assert(insight.linkedMarketIds.length > 0, `Insight ${insight.id} has linked markets`);
-  
-  // Verify linked markets exist
   for (const mid of insight.linkedMarketIds) {
     assert(db.markets.getById(mid) !== null, `Insight ${insight.id} links to existing market ${mid}`);
   }
@@ -205,12 +181,11 @@ assert(rec.bestProvider.length > 0, "Best provider identified");
 for (const proj of rec.projections) {
   assert(proj.currentMonthlyCost > 0, `${proj.provider} has positive current cost`);
   assert(proj.projected12mCost > 0, `${proj.provider} has positive projected cost`);
-  assert(proj.projected12mCost <= proj.currentMonthlyCost, `${proj.provider} projected cost <= current (decline rate working)`);
-  assert(proj.monthlyProjections.length === 13, `${proj.provider} has 13 monthly projections (0-12)`);
+  assert(proj.projected12mCost <= proj.currentMonthlyCost, `${proj.provider} projected cost <= current`);
+  assert(proj.monthlyProjections.length === 13, `${proj.provider} has 13 monthly projections`);
   assert(proj.marketAdjustedDecline >= 0 && proj.marketAdjustedDecline <= 1, `${proj.provider} decline rate in [0,1]`);
 }
 
-// Builder with different params
 const recAgent = generateRecommendation({
   useCase: "agent",
   monthlyRequests: 50000,
@@ -226,7 +201,7 @@ assert(recAgent.projections[0].currentMonthlyCost !== rec.projections[0].current
 // ============================================================
 section("Rate Limiter");
 
-const rlKey = "test:integration";
+const rlKey = "test:integration:" + Date.now(); // unique key per run
 const rlConfig = { limit: 3, windowSeconds: 60 };
 
 const r1 = checkRateLimit(rlKey, rlConfig);
@@ -243,8 +218,7 @@ const r4 = checkRateLimit(rlKey, rlConfig);
 assert(r4.allowed === false, "Fourth request blocked");
 assert(r4.remaining === 0, "0 remaining when blocked");
 
-// Different key is not affected
-const r5 = checkRateLimit("test:other", rlConfig);
+const r5 = checkRateLimit("test:other:" + Date.now(), rlConfig);
 assert(r5.allowed === true, "Different key is independent");
 
 // ============================================================
@@ -252,19 +226,15 @@ assert(r5.allowed === true, "Different key is independent");
 // ============================================================
 section("Cross-Feature Verification");
 
-// Trade affects arbitrage insights
-const insightsBefore = detectAllInsights(db.markets.getAll());
-
-// Make a large trade that should shift probabilities
+// Large trade shifts probabilities → insights should recalculate
 const m3 = db.markets.getById("m3")!;
 const bigTrade = executeTrade({ qYes: m3.qYes, qNo: m3.qNo, b: m3.b }, "no", 200);
 db.markets.update("m3", { qYes: bigTrade.newState.qYes, qNo: bigTrade.newState.qNo });
 
 const insightsAfter = detectAllInsights(db.markets.getAll());
-// Insights may change after a significant trade — just verify they're still valid
 assert(Array.isArray(insightsAfter), "Insights still valid after large trade");
 
-// Trade affects builder projections
+// Builder still works after trades
 const recAfterTrade = generateRecommendation({
   useCase: "chatbot",
   monthlyRequests: 100000,
