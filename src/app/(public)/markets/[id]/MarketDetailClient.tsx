@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, SectionHeader, MarketTypeBadge, ProviderBadge, SeverityBadge, Button } from "@/components/ui";
 import { PriceChart } from "@/components/charts/PriceChart";
+import MarketAnalysis from "@/components/ai/MarketAnalysis";
 import type { Market, Insight, UserPublic, Trade, TradePreview } from "@/types";
 
 interface Props {
@@ -228,6 +229,9 @@ export default function MarketDetailClient({ market, priceHistory, insights, rel
           <ResField label="Status" value={market.resolutionStatus} />
         </div>
       </Card>
+
+      {/* AI Analysis */}
+      <MarketAnalysis marketId={market.id} />
 
       {/* Insights + Related */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

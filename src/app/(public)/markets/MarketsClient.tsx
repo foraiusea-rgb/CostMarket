@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Card, StatCard, SectionHeader, MarketTypeBadge, ProviderBadge, SeverityBadge } from "@/components/ui";
 import { Sparkline } from "@/components/charts/PriceChart";
+import NewsDigest from "@/components/ai/NewsDigest";
 import type { Market, Insight, MarketType } from "@/types";
 
 interface EnrichedMarket extends Market {
@@ -83,6 +84,11 @@ export default function MarketsClient({ markets, insights }: { markets: Enriched
           </div>
         </div>
       )}
+
+      {/* AI Market Digest */}
+      <div className="mb-5">
+        <NewsDigest />
+      </div>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-1.5 mb-4">

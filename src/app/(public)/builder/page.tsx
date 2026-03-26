@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Card, SectionHeader, Select, Button } from "@/components/ui";
+import BuilderAdvisor from "@/components/ai/BuilderAdvisor";
 import type { BuilderRecommendation, BuilderProjection } from "@/types";
 
 const PROVIDER_COLORS: Record<string, string> = { openai: "#10a37f", anthropic: "#d97706", google: "#4285f4" };
@@ -157,6 +158,17 @@ export default function BuilderPage() {
               <p className="text-[10px] text-slate-500 italic mt-2">This is not financial advice. All projections are estimates based on current market data and simulated prediction market probabilities.</p>
             </div>
           </Card>
+
+          {/* AI Advisor */}
+          <BuilderAdvisor
+            builderResult={result}
+            formInputs={{
+              useCase: form.useCase,
+              monthlyRequests: form.monthlyRequests,
+              tier: form.tier,
+              preferredProvider: form.preferredProvider,
+            }}
+          />
         </>
       )}
     </div>

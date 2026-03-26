@@ -23,6 +23,7 @@ export default function AdminPage() {
   if (!data) return <Loading />;
 
   const links = [
+    { href: "/admin/proposals", label: "Proposals", desc: "Review and approve market proposals" },
     { href: "/admin/markets", label: "Markets", desc: "Manage markets and status" },
     { href: "/admin/resolutions", label: "Resolutions", desc: "Review and resolve markets" },
     { href: "/admin/sources", label: "Sources", desc: "Pricing data sources" },

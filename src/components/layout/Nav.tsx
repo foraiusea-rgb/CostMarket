@@ -40,6 +40,8 @@ export default function Nav() {
   const links = [
     { href: "/markets", label: "Markets" },
     { href: "/builder", label: "Builder" },
+    { href: "/ai", label: "AI" },
+    { href: "/propose", label: "Propose" },
     { href: "/methodology", label: "How It Works" },
   ];
 
