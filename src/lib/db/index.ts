@@ -57,18 +57,32 @@ const EMPTY_DB: DB = {
 
 // ============================================================
 // In-memory cache — single source of truth after initial load
+// On Vercel (serverless), the filesystem is read-only.
+// We detect this and run purely in-memory with seed data.
 // ============================================================
 
 let _cache: DB | null = null;
 let _writing = false;
 let _dirty = false;
+let _diskAvailable: boolean | null = null;
 
-function ensureDir() {
-  if (!fs.existsSync(DB_PATH)) fs.mkdirSync(DB_PATH, { recursive: true });
+function isDiskAvailable(): boolean {
+  if (_diskAvailable !== null) return _diskAvailable;
+  try {
+    if (!fs.existsSync(DB_PATH)) fs.mkdirSync(DB_PATH, { recursive: true });
+    // Test write
+    const testFile = path.join(DB_PATH, ".write-test");
+    fs.writeFileSync(testFile, "ok");
+    fs.unlinkSync(testFile);
+    _diskAvailable = true;
+  } catch {
+    _diskAvailable = false;
+  }
+  return _diskAvailable;
 }
 
 function loadFromDisk(): DB {
-  ensureDir();
+  if (!isDiskAvailable()) return structuredClone(EMPTY_DB);
   if (!fs.existsSync(DB_FILE)) return structuredClone(EMPTY_DB);
   try {
     const raw = fs.readFileSync(DB_FILE, "utf-8");
@@ -86,22 +100,22 @@ function getCache(): DB {
 }
 
 /**
- * Flush in-memory state to disk.
+ * Flush in-memory state to disk (if disk is available).
+ * On Vercel serverless, this is a no-op — data lives in memory only.
  * Serialized: if a flush is in progress, mark dirty and let the current
- * flush handle it on completion. This prevents file corruption from
- * concurrent writes.
+ * flush handle it on completion.
  */
 function flushToDisk(): void {
+  if (!isDiskAvailable()) return; // Vercel: skip disk writes, memory is source of truth
+
   _dirty = true;
-  if (_writing) return; // current write will pick up the dirty flag
+  if (_writing) return;
 
   _writing = true;
   while (_dirty) {
     _dirty = false;
     try {
-      ensureDir();
       const data = JSON.stringify(_cache, null, 2);
-      // Write to temp file then rename — atomic on most filesystems
       const tmpFile = DB_FILE + ".tmp";
       fs.writeFileSync(tmpFile, data);
       fs.renameSync(tmpFile, DB_FILE);
