@@ -42,30 +42,47 @@ export async function chatCompletion(
   messages: ChatMessage[],
   options?: { temperature?: number; maxTokens?: number }
 ): Promise<string> {
-  const res = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${getApiKey()}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://aicostmarkets.com",
-      "X-Title": "AI Cost Markets",
-    },
-    body: JSON.stringify({
-      model: getModel(),
-      messages,
-      temperature: options?.temperature ?? 0.7,
-      max_tokens: options?.maxTokens ?? 1024,
-      stream: false,
-    }),
-  });
+  // Timeout after 55 seconds (Vercel function max is 60s, leave buffer)
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 55000);
 
-  if (!res.ok) {
-    const err = await res.text().catch(() => "Unknown error");
-    throw new Error(`OpenRouter error (${res.status}): ${err}`);
+  try {
+    const res = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${getApiKey()}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://aicostmarkets.com",
+        "X-Title": "AI Cost Markets",
+      },
+      body: JSON.stringify({
+        model: getModel(),
+        messages,
+        temperature: options?.temperature ?? 0.7,
+        max_tokens: options?.maxTokens ?? 1024,
+        stream: false,
+        // Prevent OpenRouter from falling back to paid models
+        route: "fallback",
+        provider: { allow_fallbacks: false },
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => "Unknown error");
+      throw new Error(`OpenRouter error (${res.status}): ${err}`);
+    }
+
+    const data: OpenRouterResponse = await res.json();
+    return data.choices?.[0]?.message?.content || "";
+  } catch (e: unknown) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error("AI request timed out. The model may be busy — please try again.");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const data: OpenRouterResponse = await res.json();
-  return data.choices?.[0]?.message?.content || "";
 }
 
 /**
@@ -78,29 +95,38 @@ export async function chatCompletionStream(
   messages: ChatMessage[],
   options?: { temperature?: number; maxTokens?: number }
 ): Promise<ReadableStream<Uint8Array>> {
-  const res = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${getApiKey()}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://aicostmarkets.com",
-      "X-Title": "AI Cost Markets",
-    },
-    body: JSON.stringify({
-      model: getModel(),
-      messages,
-      temperature: options?.temperature ?? 0.7,
-      max_tokens: options?.maxTokens ?? 1024,
-      stream: true,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 55000);
 
-  if (!res.ok) {
-    const err = await res.text().catch(() => "Unknown error");
-    throw new Error(`OpenRouter error (${res.status}): ${err}`);
-  }
+  try {
+    const res = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${getApiKey()}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://aicostmarkets.com",
+        "X-Title": "AI Cost Markets",
+      },
+      body: JSON.stringify({
+        model: getModel(),
+        messages,
+        temperature: options?.temperature ?? 0.7,
+        max_tokens: options?.maxTokens ?? 1024,
+        stream: true,
+        route: "fallback",
+        provider: { allow_fallbacks: false },
+      }),
+      signal: controller.signal,
+    });
 
-  if (!res.body) throw new Error("No response body from OpenRouter");
+    clearTimeout(timeout); // Connection established, clear the timeout
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => "Unknown error");
+      throw new Error(`OpenRouter error (${res.status}): ${err}`);
+    }
+
+    if (!res.body) throw new Error("No response body from OpenRouter");
 
   // Transform the OpenRouter SSE stream into a clean text stream
   const reader = res.body.getReader();
@@ -141,4 +167,10 @@ export async function chatCompletionStream(
       reader.cancel();
     },
   });
+  } catch (e: unknown) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error("AI request timed out. The model may be busy — please try again.");
+    }
+    throw e;
+  }
 }

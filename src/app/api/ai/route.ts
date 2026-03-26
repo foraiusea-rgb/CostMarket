@@ -24,6 +24,9 @@ import {
 } from "@/lib/ai/prompts";
 import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
 
+// Extend serverless function timeout for AI requests (free Vercel plan: max 60s)
+export const maxDuration = 60;
+
 
 /** Build enriched market context for prompts */
 function getMarketContext() {
@@ -84,33 +87,48 @@ export async function POST(request: NextRequest) {
         ...messages.slice(-20), // Keep last 20 messages to stay within context window
       ];
 
-      // Stream the response
-      const stream = await chatCompletionStream(fullMessages, { temperature: 0.7, maxTokens: 1024 });
-
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "Cache-Control": "no-cache",
-          "Transfer-Encoding": "chunked",
-        },
-      });
+      // Try streaming, fall back to non-streaming for free models
+      try {
+        const stream = await chatCompletionStream(fullMessages, { temperature: 0.7, maxTokens: 1024 });
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Cache-Control": "no-cache",
+            "Transfer-Encoding": "chunked",
+          },
+        });
+      } catch {
+        // Streaming failed — fall back to non-streaming
+        const text = await chatCompletion(fullMessages, { temperature: 0.7, maxTokens: 1024 });
+        // Return as a plain text response so the client reader still works
+        return new Response(text, {
+          headers: { "Content-Type": "text/plain; charset=utf-8" },
+        });
+      }
     }
 
     // ── News Digest ──────────────────────────────────────────
     if (action === "digest") {
       const prompt = newsDigestPrompt(ctx);
+      const messages = [
+        { role: "system" as const, content: prompt },
+        { role: "user" as const, content: "Generate today's AI pricing market digest." },
+      ];
 
-      const stream = await chatCompletionStream([
-        { role: "system", content: prompt },
-        { role: "user", content: "Generate today's AI pricing market digest." },
-      ], { temperature: 0.6, maxTokens: 1200 });
-
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "Cache-Control": "no-cache",
-        },
-      });
+      // Try streaming first, fall back to non-streaming
+      try {
+        const stream = await chatCompletionStream(messages, { temperature: 0.6, maxTokens: 1200 });
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Cache-Control": "no-cache",
+          },
+        });
+      } catch {
+        // Streaming failed (common with free models) — fall back to non-streaming
+        const text = await chatCompletion(messages, { temperature: 0.6, maxTokens: 1200 });
+        return NextResponse.json({ ok: true, data: { digest: text } });
+      }
     }
 
     // ── Builder Advisor ──────────────────────────────────────

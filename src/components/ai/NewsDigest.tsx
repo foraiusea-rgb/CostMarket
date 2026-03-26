@@ -36,7 +36,21 @@ export default function NewsDigest() {
         return;
       }
 
-      // Stream the response
+      const contentType = res.headers.get("content-type") || "";
+
+      // JSON fallback response (non-streaming)
+      if (contentType.includes("application/json")) {
+        const data = await res.json();
+        if (data.ok && data.data?.digest) {
+          setDigest(data.data.digest);
+        } else {
+          setError(data.error || "Failed to generate digest");
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Streaming response
       const reader = res.body?.getReader();
       if (!reader) { setError("No response"); setLoading(false); return; }
 
