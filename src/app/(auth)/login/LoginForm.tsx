@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Card, Button, Input } from "@/components/ui";
-import OAuthButtons from "@/components/auth/OAuthButtons";
 import { createClient } from "@/lib/supabase/client";
 
 /**
@@ -12,8 +11,7 @@ import { createClient } from "@/lib/supabase/client";
  * 
  * Supports:
  * 1. Email/password sign-in
- * 2. Google, Apple, GitHub OAuth (via OAuthButtons)
- * 3. Magic link (passwordless email)
+ * 2. Magic link (passwordless email)
  * 
  * Separated from page.tsx so it can be wrapped in <Suspense>
  * (required by Next.js 14 because this component uses useSearchParams).
@@ -116,16 +114,6 @@ export default function LoginForm() {
           {error}
         </div>
       )}
-
-      {/* OAuth providers */}
-      <OAuthButtons />
-
-      {/* Divider */}
-      <div className="flex items-center gap-3 my-5">
-        <div className="flex-1 h-px bg-white/[0.06]" />
-        <span className="text-[10px] text-slate-500 uppercase tracking-wider">or</span>
-        <div className="flex-1 h-px bg-white/[0.06]" />
-      </div>
 
       {/* Mode toggle */}
       <div className="flex gap-1 mb-4 p-0.5 rounded-md bg-white/[0.03] border border-white/[0.06]">

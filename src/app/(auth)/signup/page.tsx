@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, Button, Input } from "@/components/ui";
-import OAuthButtons from "@/components/auth/OAuthButtons";
 import { createClient } from "@/lib/supabase/client";
 
 /**
@@ -12,7 +11,6 @@ import { createClient } from "@/lib/supabase/client";
  * 
  * Creates a new account via Supabase Auth.
  * After signup, Supabase sends a confirmation email.
- * OAuth signup is also available via the shared OAuthButtons component.
  */
 export default function SignupPage() {
   const router = useRouter();
@@ -98,16 +96,6 @@ export default function SignupPage() {
           {error}
         </div>
       )}
-
-      {/* OAuth providers */}
-      <OAuthButtons />
-
-      {/* Divider */}
-      <div className="flex items-center gap-3 my-5">
-        <div className="flex-1 h-px bg-white/[0.06]" />
-        <span className="text-[10px] text-slate-500 uppercase tracking-wider">or</span>
-        <div className="flex-1 h-px bg-white/[0.06]" />
-      </div>
 
       <form onSubmit={handleSignup} className="space-y-3">
         <Input label="Name" value={name} onChange={e => setName(e.target.value)} placeholder="Your name" required autoComplete="name" />
