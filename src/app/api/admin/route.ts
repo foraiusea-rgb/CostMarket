@@ -5,7 +5,6 @@ import { requireAdmin } from "@/lib/auth";
 import { detectAllInsights } from "@/lib/engine/arbitrage";
 import type { AuditLog } from "@/types";
 
-seed();
 
 function uid(): string {
   return `adm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -25,6 +24,7 @@ function auditLog(userId: string, action: string, resource: string, resourceId: 
 }
 
 export async function POST(request: NextRequest) {
+  await seed();
   try {
     const admin = await requireAdmin();
     const body = await request.json();
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
       const adminId = admin.id;
       const adminEmail = admin.email;
       db.reset();
-      seed();
+      await seed();
       auditLog(adminId, "reset_database", "system", "all", `Full database reset by ${adminEmail}`);
       return NextResponse.json({ ok: true });
     }
@@ -150,6 +150,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  await seed();
   try {
     const admin = await requireAdmin();
     const { searchParams } = new URL(request.url);

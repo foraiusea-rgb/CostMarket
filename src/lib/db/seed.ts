@@ -31,8 +31,18 @@ function generatePriceHistory(marketId: string, startProb: number, volatility: n
   return points;
 }
 
-export function seed(): void {
-  if (db.isSeeded()) return;
+let _seeding = false;
+let _seeded = false;
+
+export async function seed(): Promise<void> {
+  if (_seeded || _seeding) return;
+  _seeding = true;
+  
+  try {
+    // Load cache from Supabase
+    await db.init();
+    
+    if (db.isSeeded()) { _seeded = true; _seeding = false; return; }
 
   // --- Providers ---
   const providers: Provider[] = [
@@ -223,4 +233,11 @@ export function seed(): void {
   db.featureFlags.replaceAll(flags);
 
   console.log(`[seed] Created ${markets.length} markets, ${providers.length} providers, ${snapshots.length} pricing snapshots, ${tiers.length} benchmark tiers, ${insights.length} insights, ${flags.length} feature flags`);
+  
+    _seeded = true;
+  } catch (e) {
+    console.error("[seed] Error:", e);
+  } finally {
+    _seeding = false;
+  }
 }

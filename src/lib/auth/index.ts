@@ -42,6 +42,9 @@ interface SessionPayload {
 export async function getSession(): Promise<SessionPayload | null> {
   try {
     const supabase = await createClient();
+    // If Supabase isn't configured, no session is possible
+    if (!supabase) return null;
+
     const { data: { user: supabaseUser }, error } = await supabase.auth.getUser();
 
     if (error || !supabaseUser) return null;

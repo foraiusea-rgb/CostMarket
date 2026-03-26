@@ -8,10 +8,15 @@
  * the user would appear logged out even with a valid refresh token.
  */
 
-import { type NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
 export async function middleware(request: NextRequest) {
+  // Skip Supabase session refresh if env vars aren't configured yet
+  // This prevents the app from crashing during initial deployment
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return NextResponse.next();
+  }
   return await updateSession(request);
 }
 

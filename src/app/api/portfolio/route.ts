@@ -4,9 +4,9 @@ import { seed } from "@/lib/db/seed";
 import { probYes } from "@/lib/engine/lmsr";
 import { getSession } from "@/lib/auth";
 
-seed();
 
 export async function GET() {
+  await seed();
   try {
     const session = await getSession();
     if (!session) {

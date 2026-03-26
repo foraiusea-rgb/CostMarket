@@ -6,8 +6,8 @@ import MarketsClient from "./MarketsClient";
 
 export const dynamic = "force-dynamic";
 
-export default function MarketsPage() {
-  seed();
+export default async function MarketsPage() {
+  await seed();
   
   const markets = db.markets.getAll().map(m => ({
     ...m,

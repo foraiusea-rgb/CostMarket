@@ -7,13 +7,13 @@ import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS, getClientIp } from "@/lib/ratelimit";
 import type { Trade, Position, PricePoint } from "@/types";
 
-seed();
 
 function uid(): string {
   return `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export async function POST(request: NextRequest) {
+  await seed();
   // Rate limit — 30 trades per minute per IP
   const ip = getClientIp(request);
   const rl = checkRateLimit(`trade:${ip}`, RATE_LIMITS.trade);
@@ -185,6 +185,7 @@ export async function POST(request: NextRequest) {
 
 // GET: trade history
 export async function GET(request: NextRequest) {
+  await seed();
   try {
     const session = await getSession();
     if (!session) {

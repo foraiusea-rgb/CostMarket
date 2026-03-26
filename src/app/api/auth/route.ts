@@ -14,9 +14,9 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { seed } from "@/lib/db/seed";
 
-seed();
 
 export async function GET() {
+  await seed();
   try {
     const user = await getCurrentUser();
     return NextResponse.json({ ok: true, data: user });

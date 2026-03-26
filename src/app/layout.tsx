@@ -4,6 +4,17 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "AI Cost Markets — AI Pricing Intelligence",
   description: "Prediction markets for AI model pricing. Trade on future API and subscription costs. Built for founders, PMs, and infrastructure teams.",
+  icons: {
+    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230a0e17'/><text x='50%25' y='55%25' font-size='60' text-anchor='middle' dominant-baseline='middle' fill='%2310b981' font-family='monospace' font-weight='bold'>$</text></svg>",
+  },
+  openGraph: {
+    title: "AI Cost Markets",
+    description: "Prediction markets for AI model pricing. Trade on future API and subscription costs.",
+    type: "website",
+  },
+  other: {
+    "theme-color": "#0a0e17",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

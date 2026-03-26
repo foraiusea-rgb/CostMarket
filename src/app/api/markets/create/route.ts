@@ -18,7 +18,6 @@ import { detectAllInsights } from "@/lib/engine/arbitrage";
 import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
 import type { Market } from "@/types";
 
-seed();
 
 function uid(): string {
   return `m_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -78,6 +77,7 @@ function createMarketFromInput(input: {
 }
 
 export async function POST(request: NextRequest) {
+  await seed();
   const ip = getClientIp(request);
   const rl = checkRateLimit(`market-create:${ip}`, { limit: 10, windowSeconds: 60 });
   if (!rl.allowed) {
@@ -186,6 +186,7 @@ export async function POST(request: NextRequest) {
 
 /** GET: Fetch proposed markets (for admin review) */
 export async function GET(request: NextRequest) {
+  await seed();
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status") || "proposed";

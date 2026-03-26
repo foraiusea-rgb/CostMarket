@@ -24,7 +24,6 @@ import {
 } from "@/lib/ai/prompts";
 import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
 
-seed();
 
 /** Build enriched market context for prompts */
 function getMarketContext() {
@@ -37,6 +36,7 @@ function getMarketContext() {
 }
 
 export async function POST(request: NextRequest) {
+  await seed();
   // Rate limit: 20 AI requests per minute per IP
   const ip = getClientIp(request);
   const rl = checkRateLimit(`ai:${ip}`, { limit: 20, windowSeconds: 60 });

@@ -7,8 +7,8 @@ import MarketDetailClient from "./MarketDetailClient";
 
 export const dynamic = "force-dynamic";
 
-export default function MarketDetailPage({ params }: { params: { id: string } }) {
-  seed();
+export default async function MarketDetailPage({ params }: { params: { id: string } }) {
+  await seed();
 
   const market = db.markets.getById(params.id);
   if (!market) notFound();

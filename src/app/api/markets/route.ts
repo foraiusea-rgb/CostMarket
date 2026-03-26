@@ -4,9 +4,9 @@ import { seed } from "@/lib/db/seed";
 import { probYes } from "@/lib/engine/lmsr";
 import type { Market } from "@/types";
 
-seed();
 
 export async function GET(request: NextRequest) {
+  await seed();
   try {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type");

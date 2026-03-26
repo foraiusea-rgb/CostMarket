@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { seed } from "@/lib/db/seed";
 
 export async function GET() {
+  await seed();
   try {
     const marketCount = db.markets.getAll().length;
     return NextResponse.json({

@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { seed } from "@/lib/db/seed";
 
-seed();
 
 export async function GET() {
+  await seed();
   try {
     const insights = db.insights.getAll();
     return NextResponse.json({ ok: true, data: insights });

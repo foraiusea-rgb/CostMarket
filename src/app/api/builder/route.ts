@@ -6,13 +6,13 @@ import { getSession } from "@/lib/auth";
 import type { BuilderScenario } from "@/types";
 import { checkRateLimit, RATE_LIMITS, getClientIp } from "@/lib/ratelimit";
 
-seed();
 
 function uid(): string {
   return `bs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export async function POST(request: NextRequest) {
+  await seed();
   // Rate limit
   const ip = getClientIp(request);
   const rl = checkRateLimit(`api:${ip}`, RATE_LIMITS.api);
@@ -79,6 +79,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
+  await seed();
   try {
     const session = await getSession();
     if (!session) {
