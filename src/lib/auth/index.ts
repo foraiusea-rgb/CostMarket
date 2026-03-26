@@ -1,102 +1,86 @@
 /**
- * Auth System
+ * Auth System — Supabase Edition
  * 
- * JWT-based authentication with bcrypt password hashing.
- * Production would use a proper auth library (next-auth, lucia, etc.)
+ * Replaces the old bcrypt/JWT/cookie auth with Supabase Auth.
+ * 
+ * IMPORTANT: This module maintains the same exported function signatures
+ * (getSession, getCurrentUser, requireAuth, requireAdmin) so that all
+ * API routes and layouts continue to work without changes.
+ * 
+ * Flow:
+ * 1. User signs in via Supabase (email/password, OAuth, magic link)
+ * 2. Supabase sets session cookies automatically via @supabase/ssr
+ * 3. Server-side code calls getSession() → Supabase verifies the token
+ * 4. We look up the user in our DB by Supabase UID
+ * 5. Role is determined by email match (admin) or DB record (pro/free)
  */
 
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
-import type { User, UserPublic, Role } from "@/types";
+import { getRoleForEmail, isAdmin, type Role } from "./roles";
+import type { User, UserPublic } from "@/types";
 
-// cookies() is only available inside Next.js request context.
-// Dynamic import so the module can be loaded in tests without crashing.
-async function getCookieStore() {
-  const { cookies } = await import("next/headers");
-  return await cookies();
-}
+// Re-export Role type and helpers for backward compatibility
+export { type Role, isAdmin, getRoleForEmail } from "./roles";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
-const COOKIE_NAME = process.env.COOKIE_NAME || "aicm_session";
-const SALT_ROUNDS = 10;
+// --- Session types ---
 
-// --- Password ---
-
-export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, SALT_ROUNDS);
-}
-
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
-}
-
-// --- JWT ---
-
-interface JWTPayload {
+interface SessionPayload {
   userId: string;
   email: string;
   role: Role;
 }
 
-export function signToken(payload: JWTPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
-}
-
-export function verifyToken(token: string): JWTPayload | null {
+/**
+ * Get the current authenticated user's session from Supabase.
+ * 
+ * This calls supabase.auth.getUser() which validates the token with
+ * the Supabase auth server (not just local JWT decode).
+ * 
+ * Returns null if not authenticated.
+ */
+export async function getSession(): Promise<SessionPayload | null> {
   try {
-    return jwt.verify(token, JWT_SECRET) as JWTPayload;
+    const supabase = await createClient();
+    const { data: { user: supabaseUser }, error } = await supabase.auth.getUser();
+
+    if (error || !supabaseUser) return null;
+
+    // Look up user in our DB by Supabase UID
+    const dbUser = db.users.getById(supabaseUser.id);
+
+    if (dbUser) {
+      // User exists in our DB — return their info
+      return {
+        userId: dbUser.id,
+        email: dbUser.email,
+        role: dbUser.role as Role,
+      };
+    }
+
+    // User authenticated with Supabase but doesn't have a DB record yet.
+    // This happens on first login — create their record now.
+    const email = supabaseUser.email || "";
+    const name = supabaseUser.user_metadata?.full_name
+      || supabaseUser.user_metadata?.name
+      || email.split("@")[0]
+      || "User";
+    const role = getRoleForEmail(email);
+
+    const newUser = ensureUserInDB(supabaseUser.id, email, name, role);
+    return {
+      userId: newUser.id,
+      email: newUser.email,
+      role: newUser.role as Role,
+    };
   } catch {
     return null;
   }
 }
 
-// --- Session ---
-
-export async function createSession(user: User): Promise<string> {
-  const token = signToken({
-    userId: user.id,
-    email: user.email,
-    role: user.role,
-  });
-
-  const cookieStore = await getCookieStore();
-  cookieStore.set(COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-    path: "/",
-  });
-
-  return token;
-}
-
 /**
- * Get session from JWT cookie. 
- * IMPORTANT: Only returns userId for identification.
- * Always use getCurrentUser() or requireAuth() for role/permission checks
- * as the JWT may contain stale role data.
+ * Get the full public user profile for the current session.
  */
-export async function getSession(): Promise<JWTPayload | null> {
-  const cookieStore = await getCookieStore();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
-  if (!token) return null;
-  const payload = verifyToken(token);
-  if (!payload) return null;
-  
-  // Revalidate that the user still exists in DB
-  const user = db.users.getById(payload.userId);
-  if (!user) return null;
-  
-  // Return fresh role from DB, not stale JWT
-  return {
-    userId: user.id,
-    email: user.email,
-    role: user.role,
-  };
-}
-
 export async function getCurrentUser(): Promise<UserPublic | null> {
   const session = await getSession();
   if (!session) return null;
@@ -107,65 +91,56 @@ export async function getCurrentUser(): Promise<UserPublic | null> {
   return toPublicUser(user);
 }
 
+/**
+ * Require authentication — throws "Unauthorized" if no valid session.
+ */
 export async function requireAuth(): Promise<UserPublic> {
   const user = await getCurrentUser();
   if (!user) throw new Error("Unauthorized");
   return user;
 }
 
+/**
+ * Require a minimum role level — throws "Forbidden" if insufficient.
+ */
 export async function requireRole(role: Role): Promise<UserPublic> {
   const user = await requireAuth();
-  const roleHierarchy: Record<Role, number> = { free: 0, pro: 1, admin: 2 };
-  if (roleHierarchy[user.role] < roleHierarchy[role]) {
+  const hierarchy: Record<Role, number> = { free: 0, pro: 1, admin: 2 };
+  if (hierarchy[user.role as Role] < hierarchy[role]) {
     throw new Error("Forbidden");
   }
   return user;
 }
 
+/**
+ * Require admin role — convenience wrapper.
+ */
 export async function requireAdmin(): Promise<UserPublic> {
   return requireRole("admin");
 }
 
-export async function destroySession(): Promise<void> {
-  const cookieStore = await getCookieStore();
-  cookieStore.delete(COOKIE_NAME);
-}
-
-// --- Validation ---
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-export function validateEmail(email: string): boolean {
-  return EMAIL_RE.test(email) && email.length <= 254;
-}
-
-// --- User creation ---
-
-export function generateId(): string {
-  return `u_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-export async function createUser(
+/**
+ * Ensure a user record exists in our database.
+ * Called on first sign-in when Supabase knows the user but our DB doesn't.
+ * 
+ * Uses the Supabase UID as the primary key so all our existing
+ * foreign keys (trades, positions, etc.) link directly to it.
+ */
+function ensureUserInDB(
+  supabaseUid: string,
   email: string,
-  password: string,
   name: string,
-  role: Role = "free"
-): Promise<User> {
-  const normalizedEmail = email.toLowerCase().trim();
-  if (!validateEmail(normalizedEmail)) throw new Error("Invalid email format");
-  if (name.trim().length === 0) throw new Error("Name is required");
-  if (name.trim().length > 100) throw new Error("Name too long");
+  role: Role
+): User {
+  // Check if already exists (race condition guard)
+  const existing = db.users.getById(supabaseUid);
+  if (existing) return existing;
 
-  const existing = db.users.getByEmail(normalizedEmail);
-  if (existing) throw new Error("Email already registered");
-
-  const passwordHash = await hashPassword(password);
   const now = new Date().toISOString();
-
   const user: User = {
-    id: generateId(),
+    id: supabaseUid, // Use Supabase UID as our user ID
     email: email.toLowerCase().trim(),
-    passwordHash,
+    passwordHash: "", // Not used — Supabase handles passwords
     name: name.trim(),
     role,
     plan: role === "admin" ? "pro" : "free",
@@ -177,17 +152,12 @@ export async function createUser(
   return db.users.insert(user);
 }
 
-export async function authenticateUser(
-  email: string,
-  password: string
-): Promise<User> {
-  const user = db.users.getByEmail(email.toLowerCase().trim());
-  if (!user) throw new Error("Invalid email or password");
+// --- Validation (still useful for API input checking) ---
 
-  const valid = await verifyPassword(password, user.passwordHash);
-  if (!valid) throw new Error("Invalid email or password");
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  return user;
+export function validateEmail(email: string): boolean {
+  return EMAIL_RE.test(email) && email.length <= 254;
 }
 
 // --- Helpers ---

@@ -1,17 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import type { UserPublic } from "@/types";
 
 export default function Nav() {
   const pathname = usePathname();
+  const router = useRouter();
   const [user, setUser] = useState<UserPublic | null>(null);
 
   useEffect(() => {
+    // Fetch current user from our API (which checks Supabase session + DB)
     fetch("/api/auth").then(r => r.json()).then(d => { if (d.ok && d.data) setUser(d.data); }).catch(() => {});
+
+    // Listen for Supabase auth state changes (login/logout from other tabs)
+    const supabase = createClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "TOKEN_REFRESHED") {
+        // Re-fetch user from our API to get DB-backed profile
+        fetch("/api/auth").then(r => r.json()).then(d => {
+          setUser(d.ok ? d.data : null);
+        }).catch(() => setUser(null));
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    setUser(null);
+    router.push("/markets");
+    router.refresh();
+  };
 
   const links = [
     { href: "/markets", label: "Markets" },
@@ -56,11 +80,7 @@ export default function Nav() {
           ))}
 
           {user ? (
-            <button onClick={async () => {
-              await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "logout" }) });
-              setUser(null);
-              window.location.href = "/markets";
-            }} className="rounded-full px-3 py-1 text-[11px] font-medium text-slate-500 hover:text-slate-300 transition-colors">
+            <button onClick={handleLogout} className="rounded-full px-3 py-1 text-[11px] font-medium text-slate-500 hover:text-slate-300 transition-colors">
               Logout
             </button>
           ) : (
